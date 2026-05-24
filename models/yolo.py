@@ -41,6 +41,9 @@ from models.common import (
     Contract,
     Conv,
     GSConv,
+    GSConvE,
+    SNI,
+    GSConvE2,
     CrossConv,
     DetectMultiBackend,
     DWConv,
@@ -479,6 +482,8 @@ def parse_model(d, ch):
         if m in {
             Conv,
             GSConv,
+            GSConvE,
+            GSConvE2,
             GhostConv,
             Bottleneck,
             GhostBottleneck,
@@ -506,6 +511,9 @@ def parse_model(d, ch):
             if m in {BottleneckCSP, C3, C3TR, VoVGSCSP, C3Ghost, C3x}:
                 args.insert(2, n)  # number of repeats
                 n = 1
+        elif m is SNI:
+            c1, c2, up_f = ch[f], make_divisible(args[0] * gw, 8), args[1]
+            args = [c1, c2, up_f]
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
