@@ -1,10 +1,10 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-# Mish/GSConvSlimv2/IHP混合模型
+# LeakyReLU/GSConvSlimv2/IHP混合模型
 # See https://github.com/AlanLi1997/rethinking-fpn
 
 # Parameters
 nc: 80 # number of classes
-activation: nn.Mish()
+activation: nn.LeakyReLU(0.1)
 depth_multiple: 1.33 # model depth multiple
 width_multiple: 1.25 # layer channel multiple
 anchors:
