@@ -7,7 +7,7 @@ from utils.general import xyxy2xywh,xyxy2xywhn
 def create_teacher_model(weights,device):
     # device = torch.device('cuda:0')
 
-    model=attempt_load(weights, map_location=device).eval()
+    model=attempt_load(weights, device=device).eval()
 
     stride = int(model.stride.max())  # model stride
     names = model.module.names if hasattr(model, 'module') else model.names  # get class names
