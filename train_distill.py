@@ -485,7 +485,7 @@ def train(hyp, opt, device, callbacks):
                 )  # update mean losses
                 mem = f"{torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0:.3g}G"  # (GB)
                 pbar.set_description(
-                    ("%11s" * 2 + "%11.4g" * 5)
+                    ("%11s" * 2 + "%11.4g" * 5 + "%11.4g" * 3)
                     % (
                         f"{epoch}/{epochs - 1}",
                         mem,
