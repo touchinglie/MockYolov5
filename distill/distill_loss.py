@@ -1,17 +1,9 @@
-
-
 import torch
 import torch.nn as nn
 
 from utils.metrics import bbox_iou
 from utils.torch_utils import is_parallel
 from utils.loss import smooth_BCE,FocalLoss
-
-
-
-
-
-
 
 
 
@@ -96,7 +88,7 @@ class ComputeLossDistill:
                 pxy = ps[:, :2].sigmoid() * 2. - 0.5
                 pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
+                iou = bbox_iou(pbox, tbox[i], xywh=True, CIoU=True)  # iou(prediction, target)
                 lbox += (1.0 - iou).mean()  # iou loss
 
                 # Objectness
