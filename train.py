@@ -113,7 +113,7 @@ def train(hyp, opt, device, callbacks):
         callbacks (Callbacks): Callback functions for various training events.
 
     Returns:
-        None
+        (tuple): Final validation results (P, R, mAP@0.5, mAP@0.5:0.95, val/box_loss, val/obj_loss, val/cls_loss).
 
     Examples:
         Single-GPU training:
@@ -258,7 +258,7 @@ def train(hyp, opt, device, callbacks):
             """Linear learning rate scheduler function with decay calculated by epoch proportion."""
             return (1 - x / epochs) * (1.0 - hyp["lrf"]) + hyp["lrf"]  # linear
 
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)  # plot_lr_scheduler(optimizer, scheduler, epochs)
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
 
     # EMA
     ema = ModelEMA(model) if RANK in {-1, 0} else None
@@ -554,7 +554,7 @@ def parse_opt(known=False):
 
     Examples:
         ```python
-        from ultralytics.yolo import parse_opt
+        from train import parse_opt
         opt = parse_opt()
         print(opt)
         ```
@@ -789,7 +789,7 @@ def main(opt, callbacks=Callbacks()):
                     initial_values.append(list(value))
 
         # Generate random values within the search space for the rest of the population
-        if initial_values is None:
+        if not initial_values:
             population = [generate_individual(gene_ranges, len(hyp_GA)) for _ in range(pop_size)]
         elif pop_size > 1:
             population = [generate_individual(gene_ranges, len(hyp_GA)) for _ in range(pop_size - len(initial_values))]
@@ -798,6 +798,7 @@ def main(opt, callbacks=Callbacks()):
 
         # Run the genetic algorithm for a fixed number of generations
         list_keys = list(hyp_GA.keys())
+        best_fitness, best_individual = float("-inf"), None
         for generation in range(opt.evolve):
             if generation >= 1:
                 save_dict = {}
@@ -871,12 +872,14 @@ def main(opt, callbacks=Callbacks()):
                         child[j] += random.uniform(-0.1, 0.1)
                         child[j] = min(max(child[j], gene_ranges[j][0]), gene_ranges[j][1])
                 next_generation.append(child)
+            # Track the best evaluated individual across all generations
+            if max(fitness_scores) > best_fitness:
+                best_fitness = max(fitness_scores)
+                best_individual = population[fitness_scores.index(best_fitness)]
             # Replace the old population with the new generation
             population = next_generation
         # Print the best solution found
-        best_index = fitness_scores.index(max(fitness_scores))
-        best_individual = population[best_index]
-        print("Best solution found:", best_individual)
+        LOGGER.info(f"Best solution found: {best_individual}")
         # Plot results
         plot_evolve(evolve_csv)
         LOGGER.info(
@@ -960,9 +963,10 @@ def run(**kwargs):
         save_period (int, optional): Frequency in epochs to save checkpoints. Disabled if < 1. Defaults to -1.
         seed (int, optional): Global training random seed. Defaults to 0.
         local_rank (int, optional): Automatic DDP Multi-GPU argument. Do not modify. Defaults to -1.
+        **kwargs: Optional training argument overrides applied to the parsed options namespace.
 
     Returns:
-        None: The function initiates YOLOv5 training or hyperparameter evolution based on the provided options.
+        (argparse.Namespace): The parsed options namespace with any keyword overrides applied.
 
     Examples:
         ```python

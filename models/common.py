@@ -3,15 +3,17 @@
 
 import ast
 import contextlib
+import ipaddress
 import json
 import math
 import platform
+import socket
 import warnings
 import zipfile
 from collections import OrderedDict, namedtuple
 from copy import copy
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import cv2
 import numpy as np
@@ -250,7 +252,7 @@ class TransformerLayer(nn.Module):
     def __init__(self, c, num_heads):
         """Initializes a transformer layer, sans LayerNorm for performance, with multihead attention and linear layers.
 
-        See  as described in https://arxiv.org/abs/2010.11929.
+        As described in https://arxiv.org/abs/2010.11929 (ViT).
         """
         super().__init__()
         self.q = nn.Linear(c, c, bias=False)
@@ -731,13 +733,11 @@ class DetectMultiBackend(nn.Module):
             output_names = [x.name for x in session.get_outputs()]
             meta = session.get_modelmeta().custom_metadata_map  # metadata
             if "stride" in meta:
-                stride, names = int(meta["stride"]), eval(meta["names"])
+                stride, names = int(meta["stride"]), ast.literal_eval(meta["names"])
         elif xml:  # OpenVINO
             LOGGER.info(f"Loading {w} for OpenVINO inference...")
-            check_requirements(
-                "openvino>=2023.0"
-            )  # requires openvino-dev: https://pypi.org/project/openvino-dev/
-            from openvino.runtime import Core, Layout, get_batch
+            check_requirements("openvino>=2024.0.0")
+            from openvino import Core, Layout, get_batch
 
             core = Core()
             if not Path(w).is_file():  # if not *.xml
@@ -821,11 +821,8 @@ class DetectMultiBackend(nn.Module):
             LOGGER.info(f"Loading {w} for TensorFlow SavedModel inference...")
             import tensorflow as tf
 
-            keras = False  # assume TF1 saved_model
-            model = tf.keras.models.load_model(w) if keras else tf.saved_model.load(w)
-        elif (
-            pb
-        ):  # GraphDef https://www.tensorflow.org/guide/migrate#a_graphpb_or_graphpbtxt
+            model = tf.saved_model.load(w)
+        elif pb:  # GraphDef https://www.tensorflow.org/guide/migrate#a_graphpb_or_graphpbtxt
             LOGGER.info(f"Loading {w} for TensorFlow GraphDef inference...")
             import tensorflow as tf
 
@@ -982,19 +979,20 @@ class DetectMultiBackend(nn.Module):
             y = list(self.ov_compiled_model(im).values())
         elif self.engine:  # TensorRT
             if self.dynamic and im.shape != self.bindings["images"].shape:
-                i = self.model.get_binding_index("images")
-                self.context.set_binding_shape(i, im.shape)  # reshape if dynamic
-                self.bindings["images"] = self.bindings["images"]._replace(
-                    shape=im.shape
-                )
-                for name in self.output_names:
-                    i = self.model.get_binding_index(name)
-                    self.bindings[name].data.resize_(
-                        tuple(self.context.get_binding_shape(i))
-                    )
-                    self.binding_addrs[name] = int(
-                        self.bindings[name].data.data_ptr()
-                    )  # refresh after resize_
+                if self.is_trt10:  # TensorRT>=10 tensor API
+                    self.context.set_input_shape("images", im.shape)  # reshape if dynamic
+                    self.bindings["images"] = self.bindings["images"]._replace(shape=im.shape)
+                    for name in self.output_names:
+                        self.bindings[name].data.resize_(tuple(self.context.get_tensor_shape(name)))
+                        self.binding_addrs[name] = int(self.bindings[name].data.data_ptr())  # refresh after resize_
+                else:  # TensorRT<10 binding API
+                    i = self.model.get_binding_index("images")
+                    self.context.set_binding_shape(i, im.shape)  # reshape if dynamic
+                    self.bindings["images"] = self.bindings["images"]._replace(shape=im.shape)
+                    for name in self.output_names:
+                        i = self.model.get_binding_index(name)
+                        self.bindings[name].data.resize_(tuple(self.context.get_binding_shape(i)))
+                        self.binding_addrs[name] = int(self.bindings[name].data.data_ptr())  # refresh after resize_
             s = self.bindings["images"].shape
             assert (
                 im.shape == s
@@ -1030,7 +1028,7 @@ class DetectMultiBackend(nn.Module):
         else:  # TensorFlow (SavedModel, GraphDef, Lite, Edge TPU)
             im = im.cpu().numpy()
             if self.saved_model:  # SavedModel
-                y = self.model(im, training=False) if self.keras else self.model(im)
+                y = self.model(im)
             elif self.pb:  # GraphDef
                 y = self.frozen_func(x=self.tf.constant(im))
             else:  # Lite or Edge TPU
@@ -1116,6 +1114,32 @@ class DetectMultiBackend(nn.Module):
         return None, None
 
 
+def _validate_ssrf_url(url: str) -> None:
+    """Raise ValueError if url resolves to any private/internal address."""
+    hostname = urlparse(url).hostname or ""
+    try:
+        results = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as e:
+        raise ValueError(f"Could not resolve hostname '{hostname}': {e}") from e
+    for _family, _type, _proto, _canonname, sockaddr in results:
+        addr = ipaddress.ip_address(sockaddr[0])
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved or addr.is_multicast:
+            raise ValueError(f"Blocked request to internal address: {addr}")
+
+
+def _request_ssrf_url(url: str, max_redirects: int = 5):
+    """Fetch a URL after validating each resolved redirect target."""
+    session = requests.Session()
+    for _ in range(max_redirects + 1):
+        _validate_ssrf_url(url)
+        response = session.get(url, stream=True, allow_redirects=False)
+        if not response.is_redirect:
+            return response
+        url = urljoin(response.url, response.headers["location"])
+        response.close()
+    raise ValueError(f"Too many redirects while fetching {url}")
+
+
 class AutoShape(nn.Module):
     """AutoShape class for robust YOLOv5 inference with preprocessing, NMS, and support for various input formats."""
 
@@ -1151,10 +1175,7 @@ class AutoShape(nn.Module):
             m.export = True  # do not output loss values
 
     def _apply(self, fn):
-        """Applies to(), cpu(), cuda(), half() etc.
-
-        to model tensors excluding parameters or registered buffers.
-        """
+        """Applies to(), cpu(), cuda(), half() etc. to model tensors, excluding parameters or registered buffers."""
         self = super()._apply(fn)
         if self.pt:
             m = (
@@ -1207,14 +1228,7 @@ class AutoShape(nn.Module):
             for i, im in enumerate(ims):
                 f = f"image{i}"  # filename
                 if isinstance(im, (str, Path)):  # filename or uri
-                    im, f = (
-                        Image.open(
-                            requests.get(im, stream=True).raw
-                            if str(im).startswith("http")
-                            else im
-                        ),
-                        im,
-                    )
+                    im, f = Image.open(_request_ssrf_url(str(im)).raw if str(im).startswith("http") else im), im
                     im = np.asarray(exif_transpose(im))
                 elif isinstance(im, Image.Image):  # PIL Image
                     im, f = (
@@ -1272,7 +1286,7 @@ class AutoShape(nn.Module):
 class Detections:
     """Manages YOLOv5 detection results with methods for visualization, saving, cropping, and exporting detections."""
 
-    def __init__(self, ims, pred, files, times=(0, 0, 0), names=None, shape=None):
+    def __init__(self, ims, pred, files, times, names=None, shape=None):
         """Initializes the YOLOv5 Detections class with image info, predictions, filenames, timing and normalization."""
         super().__init__()
         d = pred[0].device  # device

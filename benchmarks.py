@@ -17,9 +17,9 @@ TensorFlow Edge TPU         | `edgetpu`                     | yolov5s_edgetpu.tf
 TensorFlow.js               | `tfjs`                        | yolov5s_web_model/
 
 Requirements:
-    $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime openvino-dev tensorflow-cpu  # CPU
-    $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime-gpu openvino-dev tensorflow  # GPU
-    $ pip install -U nvidia-tensorrt --index-url https://pypi.ngc.nvidia.com  # TensorRT
+    $ pip install -r requirements.txt coremltools onnx onnxslim onnxruntime openvino tensorflow-cpu  # CPU
+    $ pip install -r requirements.txt coremltools onnx onnxslim onnxruntime-gpu openvino tensorflow  # GPU
+    $ pip install -U tensorrt  # TensorRT
 
 Usage:
     $ python benchmarks.py --weights yolov5s.pt --img 640
@@ -74,7 +74,7 @@ def run(
         hard_fail (bool): Throw an error on benchmark failure if True (default: False).
 
     Returns:
-        None. Logs information about the benchmark results, including the format, size, mAP50-95, and inference time.
+        (pd.DataFrame): Benchmark results with columns for format, size, mAP50-95, and inference time.
 
     Examples:
         ```python
@@ -82,9 +82,9 @@ def run(
         ```
 
         Install required packages:
-          $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime openvino-dev tensorflow-cpu  # CPU support
-          $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime-gpu openvino-dev tensorflow   # GPU support
-          $ pip install -U nvidia-tensorrt --index-url https://pypi.ngc.nvidia.com  # TensorRT
+          $ pip install -r requirements.txt coremltools onnx onnxslim onnxruntime openvino tensorflow-cpu  # CPU support
+          $ pip install -r requirements.txt coremltools onnx onnxslim onnxruntime-gpu openvino tensorflow   # GPU support
+          $ pip install -U tensorrt  # TensorRT
 
         Run benchmarks:
           $ python benchmarks.py --weights yolov5s.pt --img 640
@@ -140,7 +140,7 @@ def run(
     LOGGER.info(str(py))
     if hard_fail and isinstance(hard_fail, str):
         metrics = py["mAP50-95"].array  # values to compare to floor
-        floor = eval(hard_fail)  # minimum metric floor to pass, i.e. = 0.29 mAP for YOLOv5n
+        floor = float(hard_fail)  # minimum metric floor to pass, i.e. = 0.29 mAP for YOLOv5n
         assert all(x > floor for x in metrics if pd.notna(x)), f"HARD FAIL: mAP50-95 < floor {floor}"
     return py
 
@@ -180,9 +180,9 @@ def test(
         ```
 
         Install required packages:
-            $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime openvino-dev tensorflow-cpu  # CPU support
-            $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime-gpu openvino-dev tensorflow   # GPU support
-            $ pip install -U nvidia-tensorrt --index-url https://pypi.ngc.nvidia.com  # TensorRT
+            $ pip install -r requirements.txt coremltools onnx onnxslim onnxruntime openvino tensorflow-cpu  # CPU support
+            $ pip install -r requirements.txt coremltools onnx onnxslim onnxruntime-gpu openvino tensorflow   # GPU support
+            $ pip install -U tensorrt  # TensorRT
         Run export tests:
             $ python benchmarks.py --weights yolov5s.pt --img 640
 
@@ -192,7 +192,7 @@ def test(
     """
     y, t = [], time.time()
     device = select_device(device)
-    for i, (name, f, suffix, gpu) in export.export_formats().iterrows():  # index, (name, file, suffix, gpu-capable)
+    for i, (name, f, suffix, cpu, gpu) in export.export_formats().iterrows():  # index, (name, file, suffix, CPU, GPU)
         try:
             w = (
                 weights
@@ -206,7 +206,6 @@ def test(
 
     # Print results
     LOGGER.info("\n")
-    parse_opt()
     notebook_init()  # print system info
     py = pd.DataFrame(y, columns=["Format", "Export"])
     LOGGER.info(f"\nExports complete ({time.time() - t:.2f}s)")
