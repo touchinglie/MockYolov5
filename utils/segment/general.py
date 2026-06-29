@@ -1,5 +1,4 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-"""Segmentation mask utils."""
 
 import cv2
 import numpy as np
@@ -11,8 +10,8 @@ def crop_mask(masks, boxes):
     """Crop predicted masks by zeroing out everything not in the predicted bbox.
 
     Args:
-        masks (torch.Tensor): Masks with shape (n, h, w).
-        boxes (torch.Tensor): Box coordinates with shape (n, 4) in xyxy pixel format (mask resolution).
+        - masks should be a size [n, h, w] tensor of masks
+        - boxes should be a size [n, 4] tensor of bbox coords in relative point form.
     """
     _n, h, w = masks.shape
     x1, y1, x2, y2 = torch.chunk(boxes[:, :, None], 4, 1)  # x1 shape(1,1,n)
@@ -22,18 +21,36 @@ def crop_mask(masks, boxes):
     return masks * ((r >= x1) * (r < x2) * (c >= y1) * (c < y2))
 
 
-def process_mask(protos, masks_in, bboxes, shape, upsample=False):
-    """Crop mask prototypes with the predicted boxes, then optionally upsample to the input image size.
+def process_mask_upsample(protos, masks_in, bboxes, shape):
+    """Crop after upsample.
 
     Args:
-        protos (torch.Tensor): Mask prototypes with shape (mask_dim, mask_h, mask_w).
-        masks_in (torch.Tensor): Mask coefficients with shape (n, mask_dim), n is number of masks after NMS.
-        bboxes (torch.Tensor): Box coordinates with shape (n, 4).
-        shape (tuple): Input image size as (h, w).
-        upsample (bool): Whether to upsample the masks to the input image size.
+        protos: [mask_dim, mask_h, mask_w]
+        masks_in: [n, mask_dim], n is number of masks after nms
+        bboxes: [n, 4], n is number of masks after nms
+        shape: input_image_size, (h, w).
 
     Returns:
-        (torch.Tensor): Binary masks with shape (n, mask_h, mask_w), upsampled to (n, h, w) when upsample=True.
+        h, w, n
+    """
+    c, mh, mw = protos.shape  # CHW
+    masks = (masks_in @ protos.float().view(c, -1)).sigmoid().view(-1, mh, mw)
+    masks = F.interpolate(masks[None], shape, mode="bilinear", align_corners=False)[0]  # CHW
+    masks = crop_mask(masks, bboxes)  # CHW
+    return masks.gt_(0.5)
+
+
+def process_mask(protos, masks_in, bboxes, shape, upsample=False):
+    """Crop before upsample.
+
+    Args:
+        proto_out: [mask_dim, mask_h, mask_w]
+        out_masks: [n, mask_dim], n is number of masks after nms
+        bboxes: [n, 4], n is number of masks after nms
+        shape: input_image_size, (h, w).
+
+    Returns:
+        h, w, n
     """
     c, mh, mw = protos.shape  # CHW
     ih, iw = shape
@@ -52,16 +69,16 @@ def process_mask(protos, masks_in, bboxes, shape, upsample=False):
 
 
 def process_mask_native(protos, masks_in, bboxes, shape):
-    """Crop mask prototypes to the input image size (native), upsampling and then cropping by the predicted boxes.
+    """Crop after upsample.
 
     Args:
-        protos (torch.Tensor): Mask prototypes with shape (mask_dim, mask_h, mask_w).
-        masks_in (torch.Tensor): Mask coefficients with shape (n, mask_dim), n is number of masks after NMS.
-        bboxes (torch.Tensor): Box coordinates with shape (n, 4).
-        shape (tuple): Input image size as (h, w).
+        protos: [mask_dim, mask_h, mask_w]
+        masks_in: [n, mask_dim], n is number of masks after nms
+        bboxes: [n, 4], n is number of masks after nms
+        shape: input_image_size, (h, w).
 
     Returns:
-        (torch.Tensor): Binary masks with shape (n, h, w).
+        h, w, n
     """
     c, mh, mw = protos.shape  # CHW
     masks = (masks_in @ protos.float().view(c, -1)).sigmoid().view(-1, mh, mw)
@@ -77,17 +94,7 @@ def process_mask_native(protos, masks_in, bboxes, shape):
 
 
 def scale_image(im1_shape, masks, im0_shape, ratio_pad=None):
-    """Rescale masks from the model input shape (im1_shape) to the original image shape (im0_shape).
-
-    Args:
-        im1_shape (tuple): Model input shape as (h, w).
-        masks (np.ndarray): Masks with shape (h, w, num).
-        im0_shape (tuple): Original image shape as (h, w, 3).
-        ratio_pad (tuple, optional): Ratio and padding for scaling. If None, calculated from the shapes.
-
-    Returns:
-        (np.ndarray): Rescaled masks resized to im0_shape.
-    """
+    """Img1_shape: model input shape, [h, w] img0_shape: origin pic shape, [h, w, 3] masks: [h, w, num]."""
     # Rescale coordinates (xyxy) from im1_shape to im0_shape
     if ratio_pad is None:  # calculate from im0_shape
         gain = min(im1_shape[0] / im0_shape[0], im1_shape[1] / im0_shape[1])  # gain  = old / new
@@ -111,18 +118,36 @@ def scale_image(im1_shape, masks, im0_shape, ratio_pad=None):
 
 
 def mask_iou(mask1, mask2, eps=1e-7):
-    """Compute the IoU between two sets of flattened masks.
-
+    """
     Args:
-        mask1 (torch.Tensor): Predicted masks with shape (N, n), where n = image_w * image_h.
-        mask2 (torch.Tensor): Ground-truth masks with shape (M, n).
-        eps (float): Small value to avoid division by zero.
+        mask1: [N, n] m1 means number of predicted objects
+        mask2: [M, n] m2 means number of gt objects.
 
     Returns:
-        (torch.Tensor): IoU matrix with shape (N, M).
+        masks iou, [N, M]
+
+    Notes:
+        - n means image_w, x image_h.
     """
     intersection = torch.matmul(mask1, mask2.t()).clamp(0)
     union = (mask1.sum(1)[:, None] + mask2.sum(1)[None]) - intersection  # (area1 + area2) - intersection
+    return intersection / (union + eps)
+
+
+def masks_iou(mask1, mask2, eps=1e-7):
+    """
+    Args:
+        mask1: [N, n] m1 means number of predicted objects
+        mask2: [N, n] m2 means number of gt objects.
+
+    Returns:
+        masks iou, (N, )
+
+    Notes:
+        - n means image_w, x image_h.
+    """
+    intersection = (mask1 * mask2).sum(1).clamp(0)  # (N, )
+    union = (mask1.sum(1) + mask2.sum(1))[None] - intersection  # (area1 + area2) - intersection
     return intersection / (union + eps)
 
 

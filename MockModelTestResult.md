@@ -52,49 +52,6 @@ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.015
  Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.116
 Results saved to runs\val\exp2
 
-yolov5n-LeakyReLU-GSConvSlim
-
-DONE (t=16.12s).                                    Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.124
- Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.223
- Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.121
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.057                        Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.138
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.170
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.166
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.300
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.342
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.137
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.377
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.490
-Results saved to runs/train/exp3
-
-real    1368m9.427s
-user    6734m26.189s
-sys     981m25.062s
-
-
-
-yolov5n-LeakyReLU-GSConvSlim-distill
-
-DONE (t=18.47s).                                    Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.136
- Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.250
- Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.133
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.062
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.149
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.186
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.176
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.317
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.361
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.157
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.402
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.515
-Results saved to runs/train/exp2
-
-real    1586m35.109s
-user    21381m6.729s
-sys     3263m46.377s
-
-
-
 python val.py --weights yolov5s-LeakyReLU.pt --data coco.yaml --img 640
 
 YOLOv5s-LeakyReLU summary: 214 layers, 7235389 parameters, 7235389 gradients, 16.6 GFLOPs

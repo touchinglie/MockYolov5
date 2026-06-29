@@ -27,6 +27,7 @@ data/samples/*
 *_openvino_model/
 
 # Below Copied From .gitignore -----------------------------------------------------------------------------------------
+# Below Copied From .gitignore -----------------------------------------------------------------------------------------
 
 
 # GitHub Python GitIgnore ----------------------------------------------------------------------------------------------
@@ -174,8 +175,9 @@ Temporary Items
 .idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/dictionaries
-*.html
-*.pg
+.html  # Bokeh Plots
+.pg  # TensorFlow Frozen Graphs
+.avi # videos
 
 # Sensitive or high-churn files:
 .idea/**/dataSources/

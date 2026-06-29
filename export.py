@@ -9,7 +9,7 @@ TorchScript                 | `torchscript`                 | yolov5s.torchscrip
 ONNX                        | `onnx`                        | yolov5s.onnx
 OpenVINO                    | `openvino`                    | yolov5s_openvino_model/
 TensorRT                    | `engine`                      | yolov5s.engine
-CoreML                      | `coreml`                      | yolov5s.mlpackage
+CoreML                      | `coreml`                      | yolov5s.mlmodel
 TensorFlow SavedModel       | `saved_model`                 | yolov5s_saved_model/
 TensorFlow GraphDef         | `pb`                          | yolov5s.pb
 TensorFlow Lite             | `tflite`                      | yolov5s.tflite
@@ -18,8 +18,8 @@ TensorFlow.js               | `tfjs`                        | yolov5s_web_model/
 PaddlePaddle                | `paddle`                      | yolov5s_paddle_model/
 
 Requirements:
-    $ pip install -r requirements.txt coremltools onnx onnxslim onnxruntime openvino tensorflow-cpu  # CPU
-    $ pip install -r requirements.txt coremltools onnx onnxslim onnxruntime-gpu openvino tensorflow  # GPU
+    $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime openvino-dev tensorflow-cpu  # CPU
+    $ pip install -r requirements.txt coremltools onnx onnx-simplifier onnxruntime-gpu openvino-dev tensorflow  # GPU
 
 Usage:
     $ python export.py --weights yolov5s.pt --include torchscript onnx openvino engine coreml tflite ...
@@ -30,7 +30,7 @@ Inference:
                                  yolov5s.onnx               # ONNX Runtime or OpenCV DNN with --dnn
                                  yolov5s_openvino_model     # OpenVINO
                                  yolov5s.engine             # TensorRT
-                                 yolov5s.mlpackage          # CoreML (macOS-only)
+                                 yolov5s.mlmodel            # CoreML (macOS-only)
                                  yolov5s_saved_model        # TensorFlow SavedModel
                                  yolov5s.pb                 # TensorFlow GraphDef
                                  yolov5s.tflite             # TensorFlow Lite
@@ -55,11 +55,12 @@ import sys
 import time
 import warnings
 from pathlib import Path
-
 # fix Path on Windows 11 will not be recognized as Windows by Pathlib
 # import pathlib
+
 # temp = pathlib.PosixPath
 # pathlib.PosixPath = pathlib.WindowsPath
+
 import pandas as pd
 import torch
 from torch.utils.mobile_optimizer import optimize_for_mobile
@@ -150,7 +151,7 @@ def export_formats():
     Returns:
         pandas.DataFrame: A DataFrame containing supported export formats and their properties. The DataFrame includes
             columns for format name, CLI argument suffix, file extension or directory name, and boolean flags indicating
-            if the export format runs on CPU and GPU.
+            if the export format supports training and detection.
 
     Examples:
         ```python
@@ -163,8 +164,8 @@ def export_formats():
         - Format: The name of the model format (e.g., PyTorch, TorchScript, ONNX, etc.).
         - Include Argument: The argument to use with the export script to include this format.
         - File Suffix: File extension or directory name associated with the format.
-        - CPU: Whether the format runs on CPU.
-        - GPU: Whether the format runs on GPU.
+        - Supports Training: Whether the format supports training.
+        - Supports Detection: Whether the format supports detection.
     """
     x = [
         ["PyTorch", "-", ".pt", True, True],
@@ -206,7 +207,7 @@ def try_export(inner_func):
 
     Notes:
         For additional requirements and model export formats, refer to the
-        [Ultralytics YOLOv5 GitHub repository](https://github.com/ultralytics/yolov5).
+        [Ultralytics YOLOv5 GitHub repository](https://github.com/ultralytics/ultralytics).
     """
     inner_args = get_default_args(inner_func)
 
@@ -297,7 +298,7 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr("ONNX
         tuple[pathlib.Path | str, None]: The path to the saved ONNX model file and None (consistent with decorator).
 
     Raises:
-        ImportError: If required libraries for export (e.g., 'onnx', 'onnxslim') are not installed.
+        ImportError: If required libraries for export (e.g., 'onnx', 'onnx-simplifier') are not installed.
         AssertionError: If the simplification check fails.
 
     Examples:
@@ -323,7 +324,7 @@ def export_onnx(model, im, file, opset, dynamic, simplify, prefix=colorstr("ONNX
     Notes:
         The required packages for this function can be installed via:
         ```
-        pip install onnx onnxslim onnxruntime onnxruntime-gpu
+        pip install onnx onnx-simplifier onnxruntime onnxruntime-gpu
         ```
     """
     check_requirements(("onnx>=1.12.0", "onnxscript"))
@@ -392,34 +393,38 @@ def export_openvino(file, metadata, half, int8, data, prefix=colorstr("OpenVINO:
         prefix (str): Prefix string for logging purposes (default is "OpenVINO:").
 
     Returns:
-        (str, None): The OpenVINO model directory path and None.
+        (str, openvino.runtime.Model | None): The OpenVINO model file path and openvino.runtime.Model object if export
+            is successful; otherwise, None.
 
     Examples:
         ```python
         from pathlib import Path
+        from ultralytics import YOLOv5
 
-        metadata = {"stride": 32, "names": {0: "person", 1: "bicycle"}}  # model metadata
-        export_openvino(Path("yolov5s.pt"), metadata, half=True, int8=False, data="coco128.yaml")
+        model = YOLOv5('yolov5s.pt')
+        export_openvino(Path('yolov5s.onnx'), metadata={'names': model.names, 'stride': model.stride}, half=True,
+                        int8=False, data='data.yaml')
         ```
 
         This will export the YOLOv5 model to OpenVINO with FP16 precision but without INT8 quantization, saving it to
         the specified file path.
 
     Notes:
-        - Requires the `openvino` package version 2024.0.0 or higher. Install with:
-          `$ pip install "openvino>=2024.0.0"`
+        - Requires `openvino-dev` package version 2023.0 or higher. Install with:
+          `$ pip install openvino-dev>=2023.0`
         - For INT8 quantization, also requires `nncf` library version 2.5.0 or higher. Install with:
           `$ pip install nncf>=2.5.0`
     """
-    check_requirements("openvino>=2024.0.0")
-    import openvino as ov
+    check_requirements("openvino-dev>=2023.0")  # requires openvino-dev: https://pypi.org/project/openvino-dev/
+    import openvino.runtime as ov
+    from openvino.tools import mo
 
     LOGGER.info(f"\n{prefix} starting export with openvino {ov.__version__}...")
     f = str(file).replace(file.suffix, f"_{'int8_' if int8 else ''}openvino_model{os.sep}")
     f_onnx = file.with_suffix(".onnx")
     f_ov = str(Path(f) / file.with_suffix(".xml").name)
 
-    ov_model = ov.convert_model(f_onnx)  # export from the existing ONNX model
+    ov_model = mo.convert_model(f_onnx, model_name=file.stem, framework="onnx", compress_to_fp16=half)  # export
 
     if int8:
         check_requirements("nncf>=2.5.0")  # requires at least version 2.5.0 to use the post-training quantization
@@ -458,7 +463,7 @@ def export_openvino(file, metadata, half, int8, data, prefix=colorstr("OpenVINO:
         quantization_dataset = nncf.Dataset(ds, transform_fn)
         ov_model = nncf.quantize(ov_model, quantization_dataset, preset=nncf.QuantizationPreset.MIXED)
 
-    ov.save_model(ov_model, f_ov, compress_to_fp16=half)  # save
+    ov.serialize(ov_model, f_ov)  # save
     yaml_save(Path(f) / file.with_suffix(".yaml").name, metadata)  # add metadata.yaml
     return f, None
 
@@ -540,8 +545,7 @@ def export_coreml(model, im, file, int8, half, nms, mlmodel, prefix=colorstr("Co
         ```
 
     Notes:
-        The exported CoreML model will be saved with a .mlpackage extension by default (or .mlmodel when the mlmodel
-        flag is True).
+        The exported CoreML model will be saved with a .mlmodel extension.
         Quantization is supported only on macOS.
     """
     check_requirements("coremltools")
@@ -608,14 +612,15 @@ def export_engine(
 
     Examples:
         ```python
+        from ultralytics import YOLOv5
         import torch
         from pathlib import Path
-        from models.experimental import attempt_load
 
-        model = attempt_load("yolov5s.pt", device="cuda")  # load a pre-trained YOLOv5 model
+        model = YOLOv5('yolov5s.pt')  # Load a pre-trained YOLOv5 model
         input_tensor = torch.randn(1, 3, 640, 640).cuda()  # example input tensor on GPU
+        export_path = Path('yolov5s.engine')  # export destination
 
-        export_engine(model, input_tensor, Path("yolov5s"), half=True, dynamic=True, simplify=True, workspace=8)
+        export_engine(model.model, input_tensor, export_path, half=True, dynamic=True, simplify=True, workspace=8, verbose=True)
         ```
     """
     assert im.device.type != "cpu", "export running on CPU but must be on GPU, i.e. `python export.py --device 0`"
@@ -623,7 +628,7 @@ def export_engine(
         import tensorrt as trt
     except Exception:
         if platform.system() == "Linux":
-            check_requirements("tensorrt")
+            check_requirements("nvidia-tensorrt", cmds="-U --index-url https://pypi.ngc.nvidia.com")
         import tensorrt as trt
 
     if trt.__version__[0] == "7":  # TensorRT 7 handling https://github.com/ultralytics/yolov5/issues/6012
@@ -927,38 +932,17 @@ def export_edgetpu(file, prefix=colorstr("Edge TPU:")):
     cmd = "edgetpu_compiler --version"
     help_url = "https://coral.ai/docs/edgetpu/compiler/"
     assert platform.system() == "Linux", f"export only supported on Linux. See {help_url}"
-    try:
-        compiler_present = (
-            subprocess.run(cmd.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-        )
-    except FileNotFoundError:
-        compiler_present = False
-    if not compiler_present:
+    if subprocess.run(f"{cmd} > /dev/null 2>&1", shell=True).returncode != 0:
         LOGGER.info(f"\n{prefix} export requires Edge TPU compiler. Attempting install from {help_url}")
-        try:
-            sudo = (
-                subprocess.run(["sudo", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
-                == 0
-            )
-        except FileNotFoundError:
-            sudo = False
-        s = ["sudo"] if sudo else []
-        curl_proc = subprocess.run(
-            ["curl", "https://packages.cloud.google.com/apt/doc/apt-key.gpg"],
-            stdout=subprocess.PIPE,
-            check=True,
-        )
-        subprocess.run([*s, "apt-key", "add", "-"], input=curl_proc.stdout, check=True)
-        deb_entry = b"deb https://packages.cloud.google.com/apt coral-edgetpu-stable main\n"
-        subprocess.run(
-            [*s, "tee", "/etc/apt/sources.list.d/coral-edgetpu.list"],
-            input=deb_entry,
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
-        subprocess.run([*s, "apt-get", "update"], check=True)
-        subprocess.run([*s, "apt-get", "install", "edgetpu-compiler"], check=True)
-    ver = subprocess.run(cmd.split(), capture_output=True, check=True).stdout.decode().split()[-1]
+        sudo = subprocess.run("sudo --version >/dev/null", shell=True).returncode == 0  # sudo installed on system
+        for c in (
+            "curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -",
+            'echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | sudo tee /etc/apt/sources.list.d/coral-edgetpu.list',
+            "sudo apt-get update",
+            "sudo apt-get install edgetpu-compiler",
+        ):
+            subprocess.run(c if sudo else c.replace("sudo ", ""), shell=True, check=True)
+    ver = subprocess.run(cmd, shell=True, capture_output=True, check=True).stdout.decode().split()[-1]
 
     LOGGER.info(f"\n{prefix} starting export with Edge TPU compiler {ver}...")
     f = str(file).replace(".pt", "-int8_edgetpu.tflite")  # Edge TPU model
@@ -1070,7 +1054,7 @@ def add_tflite_metadata(file, metadata, num_outputs):
     Notes:
         TFLite metadata can include information such as model name, version, author, and other relevant details.
         For more details on the structure of the metadata, refer to TensorFlow Lite
-        [metadata guidelines](https://developers.google.com/edge/litert/conversion/tensorflow/metadata).
+        [metadata guidelines](https://ai.google.dev/edge/litert/conversion/tensorflow/metadata).
     """
     with contextlib.suppress(ImportError):
         # check_requirements('tflite_support')
@@ -1118,7 +1102,7 @@ def pipeline_coreml(model, im, file, names, y, mlmodel, prefix=colorstr("CoreML 
         prefix (str): Custom prefix for logging messages.
 
     Returns:
-        None
+        (Path): Path to the saved CoreML model (.mlmodel).
 
     Raises:
         AssertionError: If the number of class names does not match the number of classes in the model.
@@ -1149,7 +1133,7 @@ def pipeline_coreml(model, im, file, names, y, mlmodel, prefix=colorstr("CoreML 
     from PIL import Image
 
     f = file.with_suffix(".mlmodel") if mlmodel else file.with_suffix(".mlpackage")
-    LOGGER.info(f"{prefix} starting pipeline with coremltools {ct.__version__}...")
+    print(f"{prefix} starting pipeline with coremltools {ct.__version__}...")
     _batch_size, _ch, h, w = list(im.shape)  # BCHW
     t = time.time()
 
@@ -1188,7 +1172,7 @@ def pipeline_coreml(model, im, file, names, y, mlmodel, prefix=colorstr("CoreML 
     # flexible_shape_utils.update_image_size_range(spec, feature_name='image', size_range=r)
 
     # Print
-    LOGGER.info(spec.description)
+    print(spec.description)
 
     # Model from spec
     weights_dir = None if mlmodel else str(f / "Data/com.apple.CoreML/weights")
@@ -1272,7 +1256,7 @@ def pipeline_coreml(model, im, file, names, y, mlmodel, prefix=colorstr("CoreML 
     model.output_description["confidence"] = 'Boxes × Class confidence (see user-defined metadata "classes")'
     model.output_description["coordinates"] = "Boxes × [x, y, width, height] (relative to image size)"
     model.save(f)  # pipelined
-    LOGGER.info(f"{prefix} pipeline success ({time.time() - t:.2f}s), saved as {f} ({file_size(f):.1f} MB)")
+    print(f"{prefix} pipeline success ({time.time() - t:.2f}s), saved as {f} ({file_size(f):.1f} MB)")
 
 
 @smart_inference_mode()
@@ -1316,7 +1300,7 @@ def run(
         inplace (bool): Set the YOLOv5 Detect() module inplace=True. Default is False.
         keras (bool): Flag to use Keras for TensorFlow SavedModel export. Default is False.
         optimize (bool): Optimize TorchScript model for mobile deployment. Default is False.
-        int8 (bool): Apply INT8 quantization for CoreML, TensorFlow, or OpenVINO models. Default is False.
+        int8 (bool): Apply INT8 quantization for CoreML or TensorFlow models. Default is False.
         per_tensor (bool): Apply per tensor quantization for TensorFlow models. Default is False.
         dynamic (bool): Enable dynamic axes for ONNX, TensorFlow, or TensorRT exports. Default is False.
         cache (str): TensorRT timing cache path. Default is an empty string.
@@ -1333,7 +1317,7 @@ def run(
         mlmodel (bool): Flag to use *.mlmodel for CoreML export. Default is False.
 
     Returns:
-        (list[str]): Paths of the exported files/directories.
+        None
 
     Examples:
         ```python
