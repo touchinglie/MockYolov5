@@ -49,6 +49,10 @@ ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
 from ultralytics.utils.patches import torch_load
 
 import val as validate  # for end-of-epoch mAP
+from distill.create_distill_model import create_teacher_model, infer_teacher
+
+# been added
+from distill.datasets_distill import create_dataloader_distill
 from models.experimental import attempt_load
 from models.yolo import Model
 from utils.autoanchor import check_anchors
@@ -56,11 +60,6 @@ from utils.autobatch import check_train_batch_size
 from utils.callbacks import Callbacks
 from utils.dataloaders import create_dataloader
 from utils.downloads import attempt_download, is_url
-
-# been added
-from distill.datasets_distill import create_dataloader_distill
-from distill.create_distill_model import create_teacher_model, infer_teacher
-
 from utils.general import (
     LOGGER,
     TQDM_BAR_FORMAT,
@@ -414,15 +413,11 @@ def train(hyp, opt, device, callbacks):
             targets,
             paths,
             _,
-        ) in (
-            pbar
-        ):  # batch -------------------------------------------------------------
+        ) in pbar:  # batch -------------------------------------------------------------
             callbacks.run("on_train_batch_start")
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
-            imgs_teacher = (
-                imgs_teacher.to(device, non_blocking=True).float() / 255.0
-            )  # 教师推理图片处理
+            imgs_teacher = imgs_teacher.to(device, non_blocking=True).float() / 255.0  # 教师推理图片处理
 
             # Warmup
             if ni <= nw:
@@ -451,12 +446,10 @@ def train(hyp, opt, device, callbacks):
             with torch.cuda.amp.autocast(amp):
                 pred = model(imgs)  # forward
                 # been added
-                student_loss, loss_items = compute_loss(
-                    pred, targets.to(device)
-                )  # loss scaled by batch_size
+                student_loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
                 teacher_targets = infer_teacher(teacher_model, imgs_teacher, model.names)
                 teacher_loss, teacher_loss_items = compute_loss_distill(pred, teacher_targets.to(device))
-                loss=student_loss+teacher_loss
+                loss = student_loss + teacher_loss
 
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
@@ -481,9 +474,7 @@ def train(hyp, opt, device, callbacks):
             if RANK in {-1, 0}:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 # been added
-                teacher_mloss = (teacher_mloss * i + teacher_loss_items) / (
-                    i + 1
-                )  # update mean losses
+                teacher_mloss = (teacher_mloss * i + teacher_loss_items) / (i + 1)  # update mean losses
                 mem = f"{torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0:.3g}G"  # (GB)
                 pbar.set_description(
                     ("%11s" * 2 + "%11.4g" * 5 + "%11.4g" * 3)
@@ -621,9 +612,7 @@ def parse_opt(known=False):
     """
     parser = argparse.ArgumentParser()
     # been added
-    parser.add_argument(
-        "--weights_teacher", default=ROOT / "yolov5m.pt", help="initial weights path"
-    )
+    parser.add_argument("--weights_teacher", default=ROOT / "yolov5m.pt", help="initial weights path")
 
     parser.add_argument("--weights", type=str, default=ROOT / "yolov5s.pt", help="initial weights path")
     parser.add_argument("--cfg", type=str, default="", help="model.yaml path")
