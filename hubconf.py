@@ -34,10 +34,9 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
     Examples:
         ```python
         import torch
-        from ultralytics import _create
 
         # Load an official YOLOv5s model with pretrained weights
-        model = _create('yolov5s')
+        model = torch.hub.load("ultralytics/yolov5", "yolov5n")
 
         # Load a custom model from a local checkpoint
         model = _create('path/to/custom_model.pt', pretrained=False)
@@ -48,7 +47,7 @@ def _create(name, pretrained=True, channels=3, classes=80, autoshape=True, verbo
 
     Notes:
         For more information on model loading and customization, visit the
-        [YOLOv5 PyTorch Hub Documentation](https://docs.ultralytics.com/yolov5/tutorials/pytorch_hub_model_loading/).
+        [YOLOv5 PyTorch Hub Documentation](https://docs.ultralytics.com/yolov5/tutorials/pytorch_hub_model_loading).
     """
     from pathlib import Path
 
@@ -156,10 +155,9 @@ def yolov5n(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=Tr
     Examples:
         ```python
         import torch
-        from ultralytics import yolov5n
 
         # Load the YOLOv5-nano model with defaults
-        model = yolov5n()
+        model = torch.hub.load("ultralytics/yolov5", "yolov5n")
 
         # Load the YOLOv5-nano model with a specific device
         model = yolov5n(device='cuda')
@@ -277,8 +275,8 @@ def yolov5l(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=Tr
 
 
 def yolov5x(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=True, device=None):
-    """Perform object detection using the YOLOv5-xlarge model with options for pretraining, input channels, class count,
-    autoshaping, verbosity, and device specification.
+    """Create the YOLOv5-xlarge model with options for pretraining, input channels, class count, autoshaping, verbosity,
+    and device specification.
 
     Args:
         pretrained (bool): If True, loads pretrained weights into the model. Defaults to True.
@@ -386,8 +384,6 @@ def yolov5m6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=T
 
     Returns:
         torch.nn.Module: The YOLOv5-medium-P6 model.
-        Refer to the PyTorch Hub models documentation: https://pytorch.org/hub/ultralytics_yolov5 for
-        additional details.
 
     Examples:
         ```python
@@ -400,6 +396,8 @@ def yolov5m6(pretrained=True, channels=3, classes=80, autoshape=True, _verbose=T
     Notes:
         - The model can be loaded with pre-trained weights for better performance on specific tasks.
         - The autoshape feature simplifies input handling by allowing various popular data formats.
+        - Refer to the PyTorch Hub models documentation for additional details:
+          https://pytorch.org/hub/ultralytics_yolov5
     """
     return _create("yolov5m6", pretrained, channels, classes, autoshape, _verbose, device)
 

@@ -136,7 +136,7 @@ class Loggers:
                 prefix = colorstr("ClearML: ")
                 LOGGER.warning(
                     f"{prefix}WARNING ⚠️ ClearML is installed but not configured, skipping ClearML logging."
-                    f" See https://docs.ultralytics.com/yolov5/tutorials/clearml_logging_integration#readme"
+                    f" See https://docs.ultralytics.com/yolov5/tutorials/clearml_logging_integration"
                 )
 
         else:
@@ -181,7 +181,7 @@ class Loggers:
         """Callback that runs at the end of pre-training routine, logging label plots if enabled."""
         if self.plots:
             plot_labels(labels, names, self.save_dir)
-            paths = self.save_dir.glob("*labels*.jpg")  # training labels
+            paths = sorted(self.save_dir.glob("*labels*.jpg"))  # training labels
             if self.wandb:
                 self.wandb.log({"Labels": [wandb.Image(str(x), caption=x.name) for x in paths]})
             if self.comet_logger:
@@ -225,9 +225,7 @@ class Loggers:
             self.comet_logger.on_val_start()
 
     def on_val_image_end(self, pred, predn, path, names, im):
-        """Callback that logs a validation image and its predictions to WandB or ClearML."""
-        if self.wandb:
-            self.wandb.val_one_image(pred, predn, path, names, im)
+        """Callback that logs a validation image and its predictions to ClearML."""
         if self.clearml:
             self.clearml.log_image_with_boxes(path, pred, names, im)
 
@@ -347,13 +345,16 @@ class Loggers:
 
 
 class GenericLogger:
-    """YOLOv5 General purpose logger for non-task specific logging Usage: from utils.loggers import GenericLogger;
-    logger = GenericLogger(...).
+    """General-purpose YOLOv5 logger for non-task-specific logging.
 
     Args:
         opt: Run arguments
         console_logger: Console logger
         include: loggers to include
+
+    Examples:
+        >>> from utils.loggers import GenericLogger
+        >>> logger = GenericLogger(...)
     """
 
     def __init__(self, opt, console_logger, include=("tb", "wandb", "clearml")):
