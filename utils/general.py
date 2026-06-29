@@ -42,12 +42,7 @@ except (ImportError, AssertionError):
     os.system("pip install -U ultralytics")
     import ultralytics
 
-from ultralytics.data.converter import coco80_to_coco91_class  # noqa: F401
-from ultralytics.utils import colorstr, get_default_args  # noqa: F401
 from ultralytics.utils.checks import check_requirements as check_requirements_ultralytics
-from ultralytics.utils.checks import is_ascii
-from ultralytics.utils.files import WorkingDirectory, file_date, file_size  # noqa: F401
-from ultralytics.utils.ops import make_divisible
 from ultralytics.utils.patches import torch_load
 from ultralytics.utils.torch_utils import intersect_dicts  # noqa: F401
 
@@ -83,6 +78,17 @@ def check_requirements(requirements=ROOT / "requirements.txt", exclude=(), insta
     if isinstance(requirements, Path) and sys.version_info < (3, 9):
         exclude = (*exclude, "urllib3")
     return check_requirements_ultralytics(requirements, exclude=exclude, install=install, cmds=cmds, **kwargs)
+
+
+def is_ascii(s=""):
+    """Checks if input string `s` contains only ASCII characters; returns `True` if so, otherwise `False`."""
+    s = str(s)  # convert list, tuple, None, etc. to str
+    return len(s.encode().decode("ascii", "ignore")) == len(s)
+
+
+def is_chinese(s="人工智能"):
+    """Determines if a string `s` contains any Chinese characters; returns `True` if so, otherwise `False`."""
+    return bool(re.search("[\u4e00-\u9fff]", str(s)))
 
 
 def is_colab():
