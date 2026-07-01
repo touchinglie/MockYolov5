@@ -56,8 +56,7 @@ from utils.general import (
     xyxy2xywh,
     yaml_load,
 )
-from utils.torch_utils import copy_attr, smart_inference_mode
-
+from utils.torch_utils import copy_attr, smart_inference_mode, smart_amp_autocast
 
 def autopad(k, p=None, d=1):
     """Pads kernel to 'same' output shape, adjusting for optional dilation; returns padding size.
@@ -1215,7 +1214,7 @@ class AutoShape(nn.Module):
                 p.device.type != "cpu"
             )  # Automatic Mixed Precision (AMP) inference
             if isinstance(ims, torch.Tensor):  # torch
-                with amp.autocast(autocast):
+                with smart_amp_autocast(autocast):
                     return self.model(
                         ims.to(p.device).type_as(p), augment=augment
                     )  # inference
@@ -1261,7 +1260,7 @@ class AutoShape(nn.Module):
             )  # stack and BHWC to BCHW
             x = torch.from_numpy(x).to(p.device).type_as(p) / 255  # uint8 to fp16/32
 
-        with amp.autocast(autocast):
+        with smart_amp_autocast(autocast):
             # Inference
             with dt[1]:
                 y = self.model(x, augment=augment)  # forward

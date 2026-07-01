@@ -101,6 +101,7 @@ from utils.torch_utils import (
     smart_optimizer,
     smart_resume,
     torch_distributed_zero_first,
+    smart_amp_autocast,
 )
 
 LOCAL_RANK = int(os.getenv("LOCAL_RANK", -1))  # https://pytorch.org/docs/stable/elastic/run.html
@@ -448,7 +449,7 @@ def train(hyp, opt, device, callbacks):
                     )
 
             # Forward
-            with torch.cuda.amp.autocast(amp):
+            with smart_amp_autocast(amp):
                 pred = model(imgs)  # forward
                 # been added
                 student_loss, loss_items = compute_loss(
